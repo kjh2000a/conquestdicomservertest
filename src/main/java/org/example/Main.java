@@ -2,6 +2,8 @@ package org.example;
 
 import java.io.IOException;
 import java.security.GeneralSecurityException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import org.dcm4che3.net.*;
 import org.dcm4che3.net.pdu.*;
@@ -9,12 +11,81 @@ import org.dcm4che3.net.pdu.*;
 public class Main {
     public static void main(String[] args) throws IOException {
 
+        ApplicationEntity locAE = new ApplicationEntity();
+        locAE.setAETitle("DicomApp".toUpperCase());
+        ApplicationEntity remAE = new ApplicationEntity();
+        remAE.setAETitle("Sapp");
+
+        Connection localConn = new Connection();
+        //localConn.setHostname("localhost");
+        localConn.setProtocol(Connection.Protocol.DICOM);
+        locAE.addConnection(localConn);
+
+        Connection remoteConn = new Connection();
+        remoteConn.setHostname("10.20.8.95");
+        remoteConn.setPort(5678);
+        remoteConn.setProtocol(Connection.Protocol.DICOM);
+        remAE.addConnection(remoteConn);
+
+        // Creating a device with an executor for the session...
+        Device device = new Device("test_device");
+        device.addConnection(localConn);
+        device.addApplicationEntity(locAE);
+        ExecutorService exec = Executors.newSingleThreadExecutor();
+        device.setExecutor(exec);
+
+        // Setting the association request parameters for an SRR SOP...
+        AAssociateRQ assocReq = new AAssociateRQ();
+        assocReq.setCalledAET(remAE.getAETitle());
+        assocReq.setCallingAET(locAE.getAETitle());
+        //assocReq.setApplicationContext("1.2.840.10008.3.1.1.1");
+        //assocReq.setImplClassUID("1.2.40.0.13.1.3");
+        //assocReq.setImplVersionName("dcm4che-5.12.0");
+        assocReq.addPresentationContext(new PresentationContext(
+                1, "1.2.840.10008.1.1", "1.2.840.10008.1.2"));
+//        assocReq.addPresentationContext(new PresentationContext(
+//                1, "1.2.840.10008.5.1.4.1.2.2.2", "1.2.840.10008.1.2"));
+
+        try {
+            Association assoc = locAE.connect(localConn, remoteConn, assocReq);
+
+            DimseRSP rsp = assoc.cecho();
+            rsp.next(); // Consume reply, which may fail
+            System.out.println("성공 : " + rsp);
+
+//            Attributes atts = new Attributes();
+//            atts.setString(0x00080052, VR.LO, "STUDY"); // on this Level
+//            atts.setString(0x0020000D, VR.UI, // Study Instance UID
+//                    "1.2.826.0.1.[...]");
+
+            if (assoc.isReadyForDataTransfer()) {
+                assoc.waitForOutstandingRSP();
+                assoc.release();
+            }
+        }
+        catch(Throwable ignore) {
+            System.out.println("에러 : " + ignore);
+        }
+        finally {
+//            System.out.println("릴리즈 : " + assoc);
+//            assoc.release();
+            exec.shutdown();
+        }
+    }
+}
+
+
+
+
+
+        /*
         String deviceName = "my_device";
         //Device device = new Device(deviceName);
 
 
         Connection local_c = new Connection();
-        local_c.setHostname("localhost");
+        local_c.setHostname("127.0.0.1");
+        //local_c.setPort(5678);
         local_c.setPort(Connection.NOT_LISTENING);
 
 
@@ -36,7 +107,7 @@ public class Main {
         // Configure association
         AAssociateRQ rq = new AAssociateRQ();
         rq.setCallingAET("DicomApp".toUpperCase());
-        rq.setCalledAET("CONQUESTSRV1"); // e.g. "GEPACS"
+        rq.setCalledAET("CONQUESTSRV"); // e.g. "GEPACS"
         rq.setImplVersionName("MY-SCU-1.0"); // Max 16 chars
 
 
@@ -57,12 +128,16 @@ public class Main {
         }
         catch(Throwable ignore) {
             // Failure
+            System.out.println(ignore);
+
         }
         finally {
 
         }
-    }
-}
+         */
+
+
+
 
 
         /*
